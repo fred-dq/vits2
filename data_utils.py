@@ -5,8 +5,10 @@ import torch.utils.data
 
 from utils.mel_processing import wav_to_spec, wav_to_mel
 from utils.task import load_vocab, load_wav_to_torch, load_filepaths_and_text
-from text import tokenizer
-
+#from text import tokenizer
+#from text.tokenizer import text_to_sequence
+from text.tokenizer import tokenizer
+from text import cleaners as cleaners_module
 
 class TextAudioLoader(torch.utils.data.Dataset):
     """
@@ -18,7 +20,11 @@ class TextAudioLoader(torch.utils.data.Dataset):
     def __init__(self, audiopaths_and_text, hps_data):
         self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
         self.vocab = load_vocab(hps_data.vocab_file)
-        self.text_cleaners = hps_data.text_cleaners
+        #self.text_cleaners = hps_data.text_cleaners
+        self.text_cleaners = [
+            getattr(cleaners_module, name)
+            for name in hps_data.text_cleaners
+        ]
         self.sample_rate = hps_data.sample_rate
         self.n_fft = hps_data.n_fft
         self.hop_length = hps_data.hop_length
@@ -59,12 +65,20 @@ class TextAudioLoader(torch.utils.data.Dataset):
         # separate filename and text
         audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
         text = self.get_text(text)
+        if len(text) == 0:
+            # Skip empty text samples safely
+            print(f"[WARNING] Skipping empty text for file {audiopath}")
+            return None        
         wav = self.get_audio(audiopath)
         spec = self.get_spec(audiopath, wav)
         return (text, spec, wav)
 
     def get_text(self, text):
         text_norm = tokenizer(text, self.vocab, self.text_cleaners, language=self.language, cleaned_text=self.cleaned_text)
+
+        if len(text_norm) == 0:
+            text_norm = [self.vocab["token_to_id"]["<space>"]]
+
         text_norm = torch.LongTensor(text_norm)
         return text_norm
 

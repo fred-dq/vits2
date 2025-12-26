@@ -125,7 +125,7 @@ def plot_alignment_to_numpy(alignment, info=None):
     plt.close()
     return data
 
-
+'''
 def load_vocab(vocab_file: str):
     """Load vocabulary from text file
     Args:
@@ -144,6 +144,35 @@ def load_vocab(vocab_file: str):
     vocab = transform_vocab(vocab, specials=special_symbols)
     vocab.set_default_index(UNK_ID)
     return vocab
+'''
+
+def load_vocab(vocab_file):
+    """
+    Load vocabulary from a text file.
+    Expected format:
+        token <TAB> index
+    """
+
+    token_to_id = {}
+    id_to_token = {}
+
+    with open(vocab_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            token, idx = line.split()
+            idx = int(idx)
+
+            token_to_id[token] = idx
+            id_to_token[idx] = token
+
+    return {
+        "token_to_id": token_to_id,
+        "id_to_token": id_to_token,
+        "size": len(token_to_id),
+    }
 
 
 def save_vocab(vocab, vocab_file: str):

@@ -1,7 +1,8 @@
 torch
 torchvision
 torchaudio
-torchtext
+#torchtext
+torchcodec
 
 phonemizer
 inflect

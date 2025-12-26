@@ -1,75 +1,95 @@
 """
-Cleaners are transformations that run over the input text at both training and eval time.
-
-Cleaners can be selected by passing a comma-delimited list of cleaner names as the "cleaners"
-hyperparameter.
+Text cleaners for character-based VITS2 training (Arabic).
+Cleaners operate ONLY on raw text.
+No tokenization, no vocab, no torchtext.
 """
 
 import re
-from typing import List
-from torchtext.vocab import Vocab
-from phonemizer import phonemize
-from phonemizer.separator import Separator
+import unicodedata
+from text.symbols import symbols
+
+_symbol_set = set(symbols)
 
 
-from text.normalize_numbers import normalize_numbers
-
-from text.symbols import _punctuation, PAD_ID, UNK_ID, BOS_ID, EOS_ID
-
-
+# --------------------------------------------------
+# Whitespace
+# --------------------------------------------------
 _whitespace_re = re.compile(r"\s+")
-_preserved_symbols_re = re.compile(rf"[{_punctuation}]|<.*?>")
-separator = Separator(word="<space>", phone=" ")
 
 
-# ---------------------------------------------------------------------------- #
-# |                                Text cleaners                             | #
-# ---------------------------------------------------------------------------- #
-def lowercase(text: str, *args, **kwargs):
-    return text.lower()
+def collapse_whitespace(text: str) -> str:
+    return re.sub(_whitespace_re, " ", text).strip()
 
 
-def collapse_whitespace(text: str, *args, **kwargs):
-    return re.sub(_whitespace_re, " ", text)
+# --------------------------------------------------
+# Arabic diacritics (harakat) Unicode ranges
+# --------------------------------------------------
+ARABIC_DIACRITICS = re.compile(
+    r"""
+    [\u0617-\u061A
+     \u064B-\u0652
+     \u0657-\u065F
+     \u0670
+     \u06D6-\u06ED]
+    """,
+    re.VERBOSE,
+)
 
 
-def expand_numbers(text: str, *args, **kwargs):
-    return normalize_numbers(text)
+def remove_diacritics(text: str) -> str:
+    """Remove Arabic diacritics (harakat)."""
+    return re.sub(ARABIC_DIACRITICS, "", text)
 
 
-def phonemize_text(text: List[str] | str, *args, language="en-us", **kwargs):
-    return phonemize(text, language=language, backend="espeak", separator=separator, strip=True, preserve_punctuation=True, punctuation_marks=_preserved_symbols_re, with_stress=True, njobs=8)
+# --------------------------------------------------
+# Arabic normalization
+# --------------------------------------------------
+def normalize_arabic(text: str) -> str:
+    """
+    Normalize Arabic characters to reduce orthographic variance.
+    """
+
+    # Normalize Alef variants
+    text = re.sub("[إأآا]", "ا", text)
+
+    # Normalize Yaa / Alef Maqsura
+    text = re.sub("ى", "ي", text)
+
+    # Normalize Hamza forms
+    text = re.sub("ؤ", "و", text)
+    text = re.sub("ئ", "ي", text)
+
+    # Normalize Taa Marbuta
+    text = re.sub("ة", "ه", text)
+
+    # Persian / Urdu letters → Arabic
+    text = re.sub("گ", "ك", text)
+    text = re.sub("چ", "ج", text)
+    text = re.sub("پ", "ب", text)
+
+    # Lam-Alef ligature
+    text = re.sub("ﻻ", "لا", text)
+
+    # Remove Tatweel
+    text = re.sub("ـ", "", text)
+
+    return text
 
 
-def add_spaces(text: str, *args, **kwargs):
-    spaced_text = re.sub(_preserved_symbols_re, r" \g<0> ", text)
-    cleaned_text = re.sub(_whitespace_re, " ", spaced_text)
-    return cleaned_text.strip()
+def filter_oov_characters(text: str) -> str:
+    return "".join(c for c in text if c in _symbol_set)
 
-
-# ---------------------------------------------------------------------------- #
-# |                               Token cleaners                             | #
-# ---------------------------------------------------------------------------- #
-
-
-def tokenize_text(text: str, vocab: Vocab, *args, **kwargs):
-    tokens = text.split()
-    return vocab(tokens)
-
-
-def add_bos_eos(tokens: List[int], *args, **kwargs):
-    return [BOS_ID] + tokens + [EOS_ID]
-
-
-def add_blank(tokens: List[int], *args, **kwargs):
-    result = [PAD_ID] * (len(tokens) * 2 + 1)
-    result[1::2] = tokens
-    return result
-
-
-def delete_unks(tokens: List[int], *args, **kwargs):
-    return [token for token in tokens if token != UNK_ID]
-
-
-def detokenize_sequence(sequence: List[int], vocab: Vocab, *args, **kwargs):
-    return "".join(vocab.lookup_tokens(sequence))
+# --------------------------------------------------
+# Main Arabic cleaner
+# --------------------------------------------------
+def arabic_cleaners(text: str) -> str:
+    """
+    Arabic text normalization pipeline for character-based TTS.
+    """
+    text = unicodedata.normalize("NFKC", text)
+    text = text.strip()
+    text = normalize_arabic(text)
+    text = remove_diacritics(text)
+    text = collapse_whitespace(text)
+    text = filter_oov_characters(text)
+    return text
